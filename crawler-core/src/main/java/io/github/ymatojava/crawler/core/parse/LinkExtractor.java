@@ -8,112 +8,85 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Компонент для извлечения гиперссылок из HTML-документа.
+ * Компонент для извлечения ссылок (тегов &lt;a href="..."&gt;) из HTML-документа.
  *
- * <p>Алгоритм работы:
- * <ol>
- *     <li>Парсинг HTML с помощью Jsoup (толерантный к невалидному HTML)</li>
- *     <li>Выборка всех элементов {@code <a>} с атрибутом {@code href}</li>
- *     <li>Разрешение (resolve) относительных URL через Jsoup {@code absUrl("href")}</li>
- *     <li>Каноникализация каждого URL через {@link UrlCanonicalizer}</li>
- *     <li>Фильтрация через {@link UrlFilter} (только http/https протоколы)</li>
- * </ol>
- *
- * <p>Результат возвращается в виде {@link Set}, что обеспечивает автоматическую
- * дедупликацию ссылок (одна страница может содержать несколько ссылок на один URL).</p>
+ * Использует Jsoup для парсинга DOM-дерева и обработки относительных URL-адресов.
+ * Каждая найденная ссылка проходит строгую валидацию:
+ * 1. Превращается в абсолютную (с учетом тега &lt;base&gt; или базового URL).
+ * 2. Каноникализируется через {@link UrlCanonicalizer}.
+ * 3. Фильтруется через {@link UrlFilter} (отбрасываем mailto:, javascript: и т.п.).
  */
 public class LinkExtractor {
 
-    /**
-     * Каноникализатор URL для приведения ссылок к единому формату.
-     */
     private final UrlCanonicalizer canonicalizer;
+    private final UrlFilter filter;
 
     /**
-     * Фильтр URL для отсечения неподдерживаемых схем (mailto, javascript и т.д.).
-     */
-    private final UrlFilter urlFilter;
-
-    /**
-     * Создаёт экземпляр LinkExtractor с зависимостями по умолчанию.
-     */
-    public LinkExtractor() {
-        this(new UrlCanonicalizer(), new UrlFilter());
-    }
-
-    /**
-     * Создаёт экземпляр LinkExtractor с явным указанием зависимостей.
-     * Позволяет подставить моки в тестах.
+     * Конструктор с инжекцией зависимостей.
      *
-     * @param canonicalizer каноникализатор URL
-     * @param urlFilter     фильтр URL
+     * @param canonicalizer Компонент нормализации URL
+     * @param filter        Компонент фильтрации URL
      */
-    public LinkExtractor(UrlCanonicalizer canonicalizer, UrlFilter urlFilter) {
+    public LinkExtractor(UrlCanonicalizer canonicalizer, UrlFilter filter) {
         this.canonicalizer = canonicalizer;
-        this.urlFilter = urlFilter;
+        this.filter = filter;
     }
 
     /**
-     * Извлекает и нормализует все исходящие ссылки из HTML-документа.
+     * Извлекает все допустимые исходящие ссылки из сырого HTML-кода.
      *
-     * <p>Ссылки с невалидными URL, а также ссылки с неподдерживаемыми схемами
-     * (javascript:, mailto:, tel: и т.д.) тихо игнорируются — краулер не должен
-     * прерывать обход из-за мусорных ссылок на одной странице.</p>
-     *
-     * @param html    HTML-содержимое страницы
-     * @param baseUrl базовый URL страницы, используется для разрешения относительных ссылок
-     * @return множество нормализованных абсолютных URL
+     * @param html    Исходный HTML-код страницы
+     * @param baseUrl Базовый URL страницы (для разрешения относительных ссылок)
+     * @return Набор (Set) уникальных нормализованных ссылок
      */
     public Set<String> extractLinks(String html, String baseUrl) {
         if (html == null || html.isBlank()) {
             return Set.of();
         }
 
-        // Jsoup требует baseUri для корректного разрешения относительных ссылок.
-        // Если baseUrl не задан, используем пустую строку (относительные ссылки не будут разрешены).
-        String safeBaseUrl = (baseUrl != null) ? baseUrl : "";
+        Set<String> extractedLinks = new HashSet<>();
+        
+        try {
+            // Парсим HTML через Jsoup.
+            // Передача baseUrl критически важна для корректной работы метода absUrl()
+            Document doc = Jsoup.parse(html, baseUrl != null ? baseUrl : "");
 
-        // Парсинг HTML. Jsoup толерантен к невалидному HTML и не выбрасывает исключений.
-        Document doc = Jsoup.parse(html, safeBaseUrl);
+            // Извлекаем все теги 'a', у которых есть атрибут 'href'
+            Elements links = doc.select("a[href]");
 
-        // Выбираем все элементы <a> с атрибутом href.
-        // CSS-селектор a[href] пропускает якоря без href, которые используются как точки привязки.
-        Elements anchors = doc.select("a[href]");
+            for (Element link : links) {
+                // Получаем АБСОЛЮТНЫЙ URL (Jsoup сам разрешает относительные пути)
+                String rawUrl = link.absUrl("href");
+                
+                if (rawUrl.isBlank()) {
+                    // Если Jsoup не смог собрать абсолютный URL (например, из-за mailto:),
+                    // берем оригинальный атрибут href.
+                    rawUrl = link.attr("href");
+                }
 
-        // LinkedHashSet сохраняет порядок вставки, что удобно для отладки и тестирования
-        Set<String> result = new LinkedHashSet<>();
-
-        for (Element anchor : anchors) {
-            // absUrl("href") разрешает относительный href в абсолютный URL
-            // на основе baseUri, переданного в Jsoup.parse().
-            // Если href уже абсолютный (начинается с http:// или https://), он возвращается как есть.
-            String absoluteUrl = anchor.absUrl("href");
-
-            // absUrl() возвращает пустую строку, если не удалось разрешить ссылку
-            if (absoluteUrl.isEmpty()) {
-                continue;
+                // Шаг 1: Нормализация
+                Optional<NormalizedUrl> normalizedOpt = canonicalizer.canonicalize(rawUrl, baseUrl);
+                
+                if (normalizedOpt.isPresent()) {
+                    String canonicalStr = normalizedOpt.get().value();
+                    
+                    // Шаг 2: Фильтрация
+                    if (filter.isValid(canonicalStr)) {
+                        extractedLinks.add(canonicalStr);
+                    }
+                }
             }
-
-            // Каноникализация: приведение к единому формату (нижний регистр, удаление фрагментов и т.д.)
-            Optional<NormalizedUrl> normalized = canonicalizer.canonicalize(absoluteUrl, null);
-
-            if (normalized.isEmpty()) {
-                continue;
-            }
-
-            String canonicalUrl = normalized.get().value();
-
-            // Финальная фильтрация: пропускаем только http/https
-            if (urlFilter.isValid(canonicalUrl)) {
-                result.add(canonicalUrl);
-            }
+        } catch (Exception e) {
+            // Любая ошибка при парсинге конкретной страницы не должна ронять весь процесс.
+            // В случае ошибки возвращаем те ссылки, которые успели собрать, либо пустой Set.
+            // Логирование будет добавлено позже.
         }
 
-        return result;
+        return extractedLinks;
     }
 }

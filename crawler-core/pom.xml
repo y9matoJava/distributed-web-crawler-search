@@ -40,6 +40,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Jsoup — мощная библиотека для парсинга и обработки HTML -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
         <!-- MockWebServer — локальный HTTP-сервер для тестирования загрузки страниц
              без обращения к реальному интернету -->
         <dependency>
