@@ -59,7 +59,7 @@ services:
       dockerfile: search-api/Dockerfile
     container_name: crawler-search-api-prod
     ports:
-      - "80:8081" # Проброс порта 80 (HTTP) на внутренний порт приложения 8081
+      - "127.0.0.1:8081:8081" # Проброс только для локального Nginx
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
