@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Шаг 9: PostgreSQL Database
   # Хранит все URL, их статусы и извлеченные данные страниц

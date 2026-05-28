@@ -42,4 +42,22 @@
 
     </dependencies>
 
+    <build>
+        <plugins>
+            <!-- Плагин Spring Boot необходим для запуска через mvn spring-boot:run и сборки fat jar -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>
