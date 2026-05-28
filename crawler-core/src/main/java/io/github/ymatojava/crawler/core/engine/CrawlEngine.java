@@ -12,173 +12,87 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Основной движок BFS-обхода (Breadth-First Search) веб-страниц.
+ * Движок in-memory краулера (BFS алгоритм).
  *
- * <p>Реализует классический алгоритм поуровневого обхода графа ссылок:
- * <ol>
- *     <li>Каноникализация и добавление начального URL (seed) в фронтир</li>
- *     <li>Пока фронтир не пуст и лимит страниц не достигнут:
- *         <ul>
- *             <li>Извлечение URL из головы очереди</li>
- *             <li>Загрузка HTML через {@link PageDownloader}</li>
- *             <li>Парсинг страницы через {@link PageParser}</li>
- *             <li>Добавление обнаруженных ссылок в фронтир</li>
- *         </ul>
- *     </li>
- *     <li>Формирование и возврат {@link CrawlResult}</li>
- * </ol>
- *
- * <p>BFS выбран вместо DFS, потому что он обходит страницы «вширь»,
- * начиная с ближайших к seed. Это даёт более релевантные результаты
- * и предотвращает «проваливание» вглубь одной ветки сайта.</p>
- *
- * <p><b>Потокобезопасность:</b> не является потокобезопасным. Однопоточная версия.</p>
+ * Управляет циклом: Извлечь URL из Frontier -> Скачать -> Распарсить -> Добавить новые ссылки во Frontier.
  */
 public class CrawlEngine {
 
-    private static final Logger LOG = Logger.getLogger(CrawlEngine.class.getName());
+    private static final Logger log = Logger.getLogger(CrawlEngine.class.getName());
 
-    /**
-     * Компонент для загрузки HTML-страниц по URL.
-     */
     private final PageDownloader downloader;
-
-    /**
-     * Компонент для парсинга HTML: извлечение текста, заголовка и ссылок.
-     */
     private final PageParser parser;
-
-    /**
-     * Фронтир: FIFO-очередь + дедупликация для управления порядком обхода.
-     */
     private final UrlFrontier frontier;
-
-    /**
-     * Максимальное количество страниц, которые краулер загрузит за одну сессию.
-     * Ограничение необходимо для контроля ресурсов (память, сеть, время).
-     */
+    private final UrlCanonicalizer canonicalizer;
     private final int maxPages;
 
     /**
-     * Максимальная глубина обхода (зарезервировано для будущего использования).
-     * В текущей реализации не используется, так как BFS-глубина не отслеживается.
-     */
-    private final int maxDepth;
-
-    /**
-     * Каноникализатор URL для приведения seed URL к единому формату.
-     */
-    private final UrlCanonicalizer canonicalizer;
-
-    /**
-     * Создаёт экземпляр BFS-движка краулера.
+     * Создает движок обхода.
      *
-     * @param downloader загрузчик страниц
-     * @param parser     парсер HTML
-     * @param frontier   фронтир URL (очередь + дедупликация)
-     * @param maxPages   максимальное число страниц для загрузки
-     * @param maxDepth   максимальная глубина обхода (зарезервировано)
+     * @param downloader Компонент для скачивания HTML
+     * @param parser     Компонент для парсинга HTML
+     * @param frontier   Очередь URL
+     * @param maxPages   Максимальное количество страниц, после которого обход остановится
      */
-    public CrawlEngine(PageDownloader downloader, PageParser parser,
-                       UrlFrontier frontier, int maxPages, int maxDepth) {
+    public CrawlEngine(PageDownloader downloader, PageParser parser, UrlFrontier frontier, int maxPages) {
         this.downloader = downloader;
         this.parser = parser;
         this.frontier = frontier;
+        this.canonicalizer = new UrlCanonicalizer(); // Упрощение: создаем внутри
         this.maxPages = maxPages;
-        this.maxDepth = maxDepth;
-        this.canonicalizer = new UrlCanonicalizer();
     }
 
     /**
-     * Запускает BFS-обход, начиная с указанного URL.
+     * Запускает процесс краулинга с указанного стартового URL.
      *
-     * <p>Алгоритм:
-     * <ol>
-     *     <li>Каноникализация seedUrl и добавление в фронтир</li>
-     *     <li>Цикл обхода: пока есть URL в очереди и лимит не достигнут</li>
-     *     <li>Для каждого URL:
-     *         <ul>
-     *             <li>Загрузка страницы</li>
-     *             <li>При успехе: парсинг и добавление обнаруженных ссылок в фронтир</li>
-     *             <li>При ошибке: логирование и переход к следующему URL</li>
-     *         </ul>
-     *     </li>
-     *     <li>Формирование CrawlResult с накопленными данными</li>
-     * </ol>
-     *
-     * @param seedUrl начальный URL обхода
-     * @return результат обхода, содержащий все успешно загруженные страницы
+     * @param seedUrl Начальная страница обхода
+     * @return {@link CrawlResult} Итог обхода
      */
     public CrawlResult crawl(String seedUrl) {
-        Instant startTime = Instant.now();
-        List<ParsedPage> pages = new ArrayList<>();
+        Instant start = Instant.now();
+        List<ParsedPage> successfulPages = new ArrayList<>();
 
-        // 1. Каноникализация начального URL.
-        // Seed URL может прийти от пользователя в произвольном формате
-        // (с лишними пробелами, без схемы и т.д.), поэтому его нужно нормализовать.
-        Optional<NormalizedUrl> normalizedSeed = canonicalizer.canonicalize(seedUrl, null);
-        if (normalizedSeed.isEmpty()) {
-            LOG.warning("Seed URL не прошёл каноникализацию: " + seedUrl);
-            return new CrawlResult(pages, frontier.totalDiscovered(),
-                    Duration.between(startTime, Instant.now()));
+        // 1. Нормализация и добавление стартового URL
+        Optional<NormalizedUrl> normalizedOpt = canonicalizer.canonicalize(seedUrl, null);
+        if (normalizedOpt.isEmpty()) {
+            log.warning("Invalid seed URL: " + seedUrl);
+            return new CrawlResult(successfulPages, 0, Duration.between(start, Instant.now()));
         }
+        
+        frontier.add(normalizedOpt.get().value());
 
-        // Добавляем нормализованный seed в фронтир
-        frontier.add(normalizedSeed.get().value());
+        // 2. Основной цикл BFS
+        while (!frontier.isEmpty() && successfulPages.size() < maxPages) {
+            String currentUrl = frontier.poll().orElseThrow();
 
-        // 2. Основной цикл BFS-обхода.
-        // Условие выхода: очередь пуста ИЛИ достигнут лимит страниц.
-        while (!frontier.isEmpty() && pages.size() < maxPages) {
-            // Извлекаем следующий URL из головы FIFO-очереди
-            Optional<String> nextUrl = frontier.poll();
+            log.info("Downloading: " + currentUrl);
+            DownloadResult result = downloader.download(currentUrl);
 
-            // Теоретически poll() не должен вернуть empty, если isEmpty() == false,
-            // но проверяем на всякий случай для защиты от гонок в будущем
-            if (nextUrl.isEmpty()) {
-                break;
-            }
-
-            String currentUrl = nextUrl.get();
-            LOG.info("Обход URL: " + currentUrl);
-
-            // 3. Загрузка HTML через PageDownloader
-            DownloadResult downloadResult = downloader.download(currentUrl);
-
-            // 4. Обработка результата загрузки через pattern matching (Java 21)
-            switch (downloadResult) {
-                case DownloadResult.Success success -> {
-                    // Парсинг успешно загруженной страницы
-                    ParsedPage page = parser.parse(success.url(), success.body());
-                    pages.add(page);
-
-                    // Добавляем обнаруженные ссылки в фронтир.
-                    // Фронтир сам отфильтрует уже виденные URL.
+            // 3. Обработка результата скачивания (Pattern Matching for switch - Java 21)
+            switch (result) {
+                case DownloadResult.Success s -> {
+                    // Парсинг успешного ответа
+                    ParsedPage page = parser.parse(s.url(), s.body());
+                    successfulPages.add(page);
+                    
+                    // Добавление новых ссылок в очередь
                     frontier.addAll(page.outLinks());
-
-                    LOG.fine("Извлечено " + page.outLinks().size()
-                            + " ссылок с " + currentUrl);
+                    log.info("Parsed " + s.url() + " | Outlinks: " + page.outLinks().size());
                 }
-
-                case DownloadResult.Failure failure -> {
-                    // Ошибка загрузки не должна прерывать обход —
-                    // просто логируем и переходим к следующему URL
-                    LOG.log(Level.WARNING,
-                            "Ошибка загрузки URL {0}: {1}",
-                            new Object[]{failure.url(), failure.reason()});
+                case DownloadResult.Failure f -> {
+                    // Логирование ошибки
+                    log.warning("Failed to download " + f.url() + " | Reason: " + f.reason());
                 }
             }
         }
 
-        // 5. Формирование итогового результата
-        Duration elapsed = Duration.between(startTime, Instant.now());
-        LOG.info("Обход завершён: загружено " + pages.size()
-                + " страниц, обнаружено " + frontier.totalDiscovered()
-                + " URL за " + elapsed.toMillis() + " мс");
+        Instant end = Instant.now();
+        log.info(String.format("Crawl completed. Pages: %d, Discovered URLs: %d, Time: %d ms",
+                successfulPages.size(), frontier.totalDiscovered(), Duration.between(start, end).toMillis()));
 
-        return new CrawlResult(pages, frontier.totalDiscovered(), elapsed);
+        return new CrawlResult(successfulPages, frontier.totalDiscovered(), Duration.between(start, end));
     }
 }

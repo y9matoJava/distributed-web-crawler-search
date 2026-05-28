@@ -6,31 +6,18 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Неизменяемая модель результата сессии обхода (crawl session).
+ * Неизменяемый объект данных, содержащий итоговый результат сессии краулинга.
  *
- * <p>Содержит все данные, накопленные за одну сессию работы краулера:
- * <ul>
- *     <li>Список распарсенных страниц</li>
- *     <li>Общее количество обнаруженных URL (включая отфильтрованные и не загруженные)</li>
- *     <li>Длительность обхода</li>
- * </ul>
- *
- * @param pages              список всех успешно загруженных и распарсенных страниц
- * @param totalUrlsDiscovered общее число уникальных URL, обнаруженных фронтиром за сессию
- * @param elapsed            время, затраченное на обход
+ * @param pages                 Список всех успешно скачанных и распарсенных страниц
+ * @param totalUrlsDiscovered   Общее количество уникальных найденных ссылок (размер графа)
+ * @param elapsed               Затраченное время на краулинг
  */
 public record CrawlResult(
         List<ParsedPage> pages,
         int totalUrlsDiscovered,
         Duration elapsed
 ) {
-    /**
-     * Компактный конструктор с защитным копированием списка страниц.
-     */
     public CrawlResult {
         pages = pages != null ? List.copyOf(pages) : List.of();
-        if (elapsed == null) {
-            elapsed = Duration.ZERO;
-        }
     }
 }
