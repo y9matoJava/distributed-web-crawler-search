@@ -38,17 +38,25 @@ public class WorkerPipeline {
     // Компоненты из модуля crawler-core
     private final PageDownloader downloader;
     private final PageParser parser;
+    
+    // Компоненты вежливости (Politeness)
+    private final io.github.ymatojava.crawler.worker.politeness.PolitenessLimiter politenessLimiter;
+    private final io.github.ymatojava.crawler.worker.politeness.RobotsTxtService robotsTxtService;
 
     public WorkerPipeline(UrlRepository urlRepository,
                           PageRepository pageRepository,
                           UrlProducer urlProducer,
                           PageDownloader downloader,
-                          PageParser parser) {
+                          PageParser parser,
+                          io.github.ymatojava.crawler.worker.politeness.PolitenessLimiter politenessLimiter,
+                          io.github.ymatojava.crawler.worker.politeness.RobotsTxtService robotsTxtService) {
         this.urlRepository = urlRepository;
         this.pageRepository = pageRepository;
         this.urlProducer = urlProducer;
         this.downloader = downloader;
         this.parser = parser;
+        this.politenessLimiter = politenessLimiter;
+        this.robotsTxtService = robotsTxtService;
     }
 
     /**
@@ -69,6 +77,15 @@ public class WorkerPipeline {
             log.warning("URL уже обработан (статус " + urlEntity.getStatus() + "). Пропуск.");
             return;
         }
+
+        // 1.5. Проверка Robots.txt и Rate Limiting (Politeness Policy)
+        if (!robotsTxtService.isAllowed(message.url())) {
+            log.warning("URL запрещен в robots.txt: " + message.url());
+            updateUrlStatus(urlEntity, UrlStatus.SKIPPED);
+            return;
+        }
+        
+        politenessLimiter.applyDelay(message.url());
 
         // 2. Скачивание страницы (блокирующая сетевая операция)
         DownloadResult downloadResult = downloader.download(message.url());

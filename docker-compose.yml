@@ -61,7 +61,19 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Шаг 14: Redis
+  # Распределенный кэш для Rate Limiting (Politeness Policy) и кэширования robots.txt
+  redis:
+    image: redis:7.2-alpine
+    container_name: crawler-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   rabbitmq_data:
   elasticsearch_data:
+  redis_data:
