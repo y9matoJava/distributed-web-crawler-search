@@ -4,9 +4,9 @@ spring:
 
   # Настройки подключения к PostgreSQL (запускается через docker-compose)
   datasource:
-    url: jdbc:postgresql://localhost:5432/crawler
-    username: crawler_user
-    password: crawler_password
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/crawler}
+    username: ${SPRING_DATASOURCE_USERNAME:crawler_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:crawler_password}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10

@@ -4,6 +4,8 @@
 # Maven
 target/
 
-# Environment
-.env
+### Others
 *.log
+*.log.1
+*.log.*
+.env

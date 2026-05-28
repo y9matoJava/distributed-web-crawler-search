@@ -7,15 +7,15 @@ spring:
   
   # Настройки подключения к Elasticsearch
   elasticsearch:
-    uris: http://localhost:9200
+    uris: ${SPRING_ELASTICSEARCH_URIS:http://localhost:9200}
     connection-timeout: 3s
     socket-timeout: 10s
 
   # Подключение к БД PostgreSQL
   datasource:
-    url: jdbc:postgresql://localhost:5432/crawler
-    username: crawler_user
-    password: crawler_password
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/crawler}
+    username: ${SPRING_DATASOURCE_USERNAME:crawler_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:crawler_password}
     driver-class-name: org.postgresql.Driver
 
 logging:
