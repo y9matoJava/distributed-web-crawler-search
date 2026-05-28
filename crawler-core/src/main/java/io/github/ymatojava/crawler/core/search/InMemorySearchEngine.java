@@ -1,210 +1,113 @@
 package io.github.ymatojava.crawler.core.search;
 
+import io.github.ymatojava.crawler.common.model.CrawlPage;
 import io.github.ymatojava.crawler.core.keyword.KeywordExtractor;
 import io.github.ymatojava.crawler.core.keyword.TextTokenizer;
 
-import java.util.Collections;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
- * Реализация поискового движка, работающая целиком в оперативной памяти.
- * <p>
- * Предназначена для прототипирования и небольших объёмов данных.
- * Для промышленного использования следует заменить на реализацию
- * с использованием специализированных поисковых систем (Elasticsearch, Lucene).
- * <p>
- * Архитектура:
- * <ul>
- *     <li>{@link InvertedIndex} — хранит отображение «ключевое слово → документы».</li>
- *     <li>{@code pageStore} — хранит метаданные страниц (URL, заголовок, текст).</li>
- *     <li>{@link KeywordExtractor} — извлекает ключевые слова из текста страницы.</li>
- *     <li>{@link TextTokenizer} — токенизирует поисковый запрос.</li>
- * </ul>
- * Все структуры данных потокобезопасны (ConcurrentHashMap, AtomicLong).
+ * Локальная in-memory реализация поискового движка.
+ *
+ * Совмещает в себе хранилище страниц (Document Store) и инвертированный индекс.
  */
 public class InMemorySearchEngine implements SearchEngine {
 
-    /**
-     * Максимальная длина сниппета в символах.
-     * 200 символов — это примерно 1–2 предложения, достаточно для предпросмотра.
-     */
-    private static final int SNIPPET_MAX_LENGTH = 200;
-
-    /** Инвертированный индекс для быстрого поиска по ключевым словам. */
-    private final InvertedIndex invertedIndex;
-
-    /**
-     * Хранилище метаданных проиндексированных страниц.
-     * Ключ — внутренний ID документа, значение — метаданные страницы.
-     * ConcurrentHashMap обеспечивает потокобезопасный доступ при параллельной индексации.
-     */
-    private final Map<Long, PageData> pageStore = new ConcurrentHashMap<>();
+    private final InvertedIndex index = new InvertedIndex();
+    // Хранилище: docId -> CrawlPage
+    private final Map<Long, CrawlPage> documentStore = new ConcurrentHashMap<>();
+    private final AtomicLong idGenerator = new AtomicLong(1);
+    
+    private final KeywordExtractor keywordExtractor = new KeywordExtractor();
+    private final TextTokenizer tokenizer = new TextTokenizer();
 
     /**
-     * Атомарный генератор уникальных ID документов.
-     * AtomicLong гарантирует уникальность ID при параллельном вызове из нескольких потоков.
-     */
-    private final AtomicLong idGenerator = new AtomicLong(0);
-
-    /** Компонент извлечения ключевых слов из текста страницы. */
-    private final KeywordExtractor keywordExtractor;
-
-    /** Токенизатор для разбиения поискового запроса на отдельные термины. */
-    private final TextTokenizer tokenizer;
-
-    /**
-     * Конструктор по умолчанию.
-     * Создаёт все внутренние зависимости самостоятельно.
-     */
-    public InMemorySearchEngine() {
-        this.invertedIndex = new InvertedIndex();
-        this.keywordExtractor = new KeywordExtractor();
-        this.tokenizer = new TextTokenizer();
-    }
-
-    /**
-     * Индексирует веб-страницу: извлекает ключевые слова и добавляет их в поисковый индекс.
-     * <p>
-     * Процесс:
-     * <ol>
-     *     <li>Генерация уникального ID для документа (AtomicLong.incrementAndGet).</li>
-     *     <li>Извлечение ключевых слов из текста страницы через {@link KeywordExtractor}.</li>
-     *     <li>Сохранение метаданных страницы в хранилище ({@code pageStore}).</li>
-     *     <li>Добавление ключевых слов в инвертированный индекс.</li>
-     * </ol>
+     * Индексирует новую скачанную страницу.
      *
-     * @param url      URL-адрес проиндексированной страницы
-     * @param title    Заголовок страницы (содержимое тега &lt;title&gt;)
-     * @param bodyText Полный текст тела страницы (без HTML-тегов)
+     * 1. Извлекает ключевые слова.
+     * 2. Сохраняет страницу в Document Store.
+     * 3. Добавляет в инвертированный индекс.
+     *
+     * @param url      URL страницы
+     * @param title    Заголовок страницы
+     * @param bodyText Текст страницы
      */
     public void indexPage(String url, String title, String bodyText) {
-        // 1. Генерация уникального ID; incrementAndGet — атомарная операция
-        long docId = idGenerator.incrementAndGet();
+        if (url == null || bodyText == null) return;
 
-        // 2. Извлечение ключевых слов из текста страницы
+        // Извлекаем ключевые слова для индексации
         List<String> keywords = keywordExtractor.extract(bodyText);
 
-        // 3. Сохранение метаданных страницы для последующего формирования результатов поиска
-        pageStore.put(docId, new PageData(url, title, bodyText, keywords));
+        long docId = idGenerator.getAndIncrement();
+        CrawlPage page = new CrawlPage(docId, url, title, bodyText, keywords, Instant.now());
 
-        // 4. Добавление документа в инвертированный индекс
-        invertedIndex.addDocument(docId, keywords);
+        documentStore.put(docId, page);
+        index.addDocument(docId, keywords);
     }
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Алгоритм поиска:
-     * <ol>
-     *     <li>Токенизация запроса — разбиение на отдельные термины.</li>
-     *     <li>Поиск документов, содержащих ВСЕ термины (AND-логика).</li>
-     *     <li>Для каждого найденного документа вычисляется оценка релевантности:
-     *         {@code (количество совпавших терминов / общее количество терминов запроса)}.</li>
-     *     <li>Формирование сниппета — первые {@value #SNIPPET_MAX_LENGTH} символов текста.</li>
-     *     <li>Сортировка по убыванию релевантности и ограничение по {@code limit}.</li>
-     * </ol>
-     */
     @Override
     public List<SearchResult> search(String query, int limit) {
         if (query == null || query.isBlank()) {
-            return Collections.emptyList();
+            return List.of();
         }
 
-        // 1. Токенизация поискового запроса
+        // 1. Токенизируем запрос пользователя
         List<String> queryTerms = tokenizer.tokenize(query);
         if (queryTerms.isEmpty()) {
-            return Collections.emptyList();
+            return List.of();
         }
 
-        // 2. Конъюнктивный поиск: находим документы, содержащие ВСЕ термины запроса
-        Set<Long> matchingDocIds = invertedIndex.searchAll(queryTerms);
+        // 2. Ищем документы, содержащие ВСЕ слова из запроса (AND)
+        Set<Long> matchedDocIds = index.searchAll(queryTerms);
 
-        if (matchingDocIds.isEmpty()) {
-            return Collections.emptyList();
+        // 3. Вычисляем релевантность и формируем результат
+        List<SearchResult> results = new ArrayList<>();
+        for (Long docId : matchedDocIds) {
+            CrawlPage page = documentStore.get(docId);
+            if (page != null) {
+                // В in-memory версии используем базовую релевантность:
+                // Доля слов из запроса, которые попали в ТОП ключевых слов страницы
+                double score = calculateScore(queryTerms, page.keywords());
+                
+                String snippet = createSnippet(page.bodyText());
+                results.add(new SearchResult(page.url(), page.title(), snippet, page.keywords(), score));
+            }
         }
 
-        // 3–5. Для каждого найденного документа: вычисляем релевантность, формируем сниппет,
-        // сортируем и ограничиваем количество результатов
-        return matchingDocIds.stream()
-                .map(docId -> {
-                    PageData page = pageStore.get(docId);
-                    if (page == null) {
-                        return null;
-                    }
-
-                    // Оценка релевантности: доля терминов запроса, найденных среди ключевых слов страницы
-                    double score = calculateRelevance(queryTerms, page.keywords());
-
-                    // Сниппет: первые SNIPPET_MAX_LENGTH символов текста страницы
-                    String snippet = createSnippet(page.bodyText());
-
-                    return new SearchResult(page.url(), page.title(), snippet, page.keywords(), score);
-                })
-                .filter(result -> result != null)
-                .sorted((a, b) -> Double.compare(b.relevanceScore(), a.relevanceScore()))
+        // 4. Сортируем по убыванию релевантности и обрезаем по лимиту
+        return results.stream()
+                .sorted(Comparator.comparingDouble(SearchResult::relevanceScore).reversed())
                 .limit(limit)
-                .toList();
+                .collect(Collectors.toList());
     }
 
     /**
-     * Вычисляет оценку релевантности документа для данного запроса.
-     * <p>
-     * Формула: {@code совпавшие_термины / всего_терминов_запроса}.
-     * Это упрощённая метрика, дающая значение от 0.0 до 1.0.
-     * При AND-логике поиска все документы будут иметь score = 1.0,
-     * но метрика полезна при возможном переходе к OR-логике.
-     *
-     * @param queryTerms Термины поискового запроса
-     * @param keywords   Ключевые слова документа
-     * @return Оценка релевантности от 0.0 до 1.0
+     * Базовый алгоритм оценки релевантности.
      */
-    private double calculateRelevance(List<String> queryTerms, List<String> keywords) {
-        if (queryTerms.isEmpty()) {
-            return 0.0;
-        }
-
-        // Подсчёт количества терминов запроса, присутствующих в ключевых словах документа
-        long matchCount = queryTerms.stream()
-                .map(String::toLowerCase)
-                .filter(term -> keywords.stream()
-                        .map(String::toLowerCase)
-                        .anyMatch(kw -> kw.equals(term)))
+    private double calculateScore(List<String> queryTerms, List<String> pageKeywords) {
+        if (queryTerms.isEmpty() || pageKeywords.isEmpty()) return 0.0;
+        
+        long matches = queryTerms.stream()
+                .filter(pageKeywords::contains)
                 .count();
-
-        return (double) matchCount / queryTerms.size();
+                
+        return (double) matches / queryTerms.size();
     }
 
     /**
-     * Формирует сниппет (краткое описание) из текста страницы.
-     * Берёт первые {@value #SNIPPET_MAX_LENGTH} символов текста.
-     *
-     * @param bodyText Полный текст страницы
-     * @return Строка длиной не более {@value #SNIPPET_MAX_LENGTH} символов
+     * Создает короткий сниппет текста (до 200 символов) для вывода в результатах поиска.
      */
     private String createSnippet(String bodyText) {
-        if (bodyText == null || bodyText.isEmpty()) {
-            return "";
-        }
-        // Ограничиваем длину текста для компактного отображения в результатах поиска
-        if (bodyText.length() <= SNIPPET_MAX_LENGTH) {
-            return bodyText;
-        }
-        return bodyText.substring(0, SNIPPET_MAX_LENGTH);
-    }
-
-    /**
-     * Внутренняя запись для хранения метаданных проиндексированной страницы.
-     * Использование record обеспечивает неизменяемость данных.
-     *
-     * @param url      URL-адрес страницы
-     * @param title    Заголовок страницы
-     * @param bodyText Полный текст тела страницы
-     * @param keywords Извлечённые ключевые слова
-     */
-    private record PageData(String url, String title, String bodyText, List<String> keywords) {
+        if (bodyText == null) return "";
+        if (bodyText.length() <= 200) return bodyText;
+        return bodyText.substring(0, 197) + "...";
     }
 }
