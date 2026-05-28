@@ -12,8 +12,20 @@ if [ ! -f .env ]; then
 fi
 
 echo "📦 Сборка и запуск контейнеров..."
-docker-compose -f docker-compose.prod.yml build
-docker-compose -f docker-compose.prod.yml up -d
+# Проверяем, как установлен docker compose (v2) или docker-compose (v1)
+if command -v docker-compose &> /dev/null; then
+    DOCKER_CMD="docker-compose"
+elif docker --help | grep -q "compose"; then
+    DOCKER_CMD="docker compose"
+else
+    echo "❌ Ошибка: Docker Compose не установлен на сервере!"
+    echo "Пожалуйста, установите Docker и Docker Compose перед запуском:"
+    echo "sudo apt update && sudo apt install docker.io docker-compose-v2 -y"
+    exit 1
+fi
+
+$DOCKER_CMD -f docker-compose.prod.yml build
+$DOCKER_CMD -f docker-compose.prod.yml up -d
 
 echo "✅ Развертывание успешно завершено!"
-echo "🔍 Проверьте логи: docker-compose -f docker-compose.prod.yml logs -f"
+echo "🔍 Проверьте логи: $DOCKER_CMD -f docker-compose.prod.yml logs -f"
