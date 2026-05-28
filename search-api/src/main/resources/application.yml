@@ -11,6 +11,13 @@ spring:
     connection-timeout: 3s
     socket-timeout: 10s
 
+  # Подключение к БД PostgreSQL
+  datasource:
+    url: jdbc:postgresql://localhost:5432/crawler
+    username: crawler_user
+    password: crawler_password
+    driver-class-name: org.postgresql.Driver
+
 logging:
   level:
     root: INFO
