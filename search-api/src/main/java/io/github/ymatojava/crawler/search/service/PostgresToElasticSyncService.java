@@ -36,7 +36,7 @@ public class PostgresToElasticSyncService {
 
     @Scheduled(fixedDelay = 5000)
     public void syncData() {
-        String sql = "SELECT id, url, title, body_text, keywords FROM crawl_pages WHERE id > ? ORDER BY id ASC LIMIT 500";
+        String sql = "SELECT id, url, title, body_text FROM crawl_pages WHERE id > ? ORDER BY id ASC LIMIT 500";
         
         List<PageDocument> newPages = jdbcTemplate.query(sql, (rs, rowNum) -> {
             long id = rs.getLong("id");
@@ -44,12 +44,10 @@ public class PostgresToElasticSyncService {
             String title = rs.getString("title");
             String bodyText = rs.getString("body_text");
             
-            Array keywordsArray = rs.getArray("keywords");
-            List<String> keywords = null;
-            if (keywordsArray != null) {
-                String[] strArray = (String[]) keywordsArray.getArray();
-                keywords = Arrays.asList(strArray);
-            }
+            // Ключевые слова в PostgreSQL вынесены в отдельную таблицу page_keywords,
+            // но для полнотекстового поиска в Elasticsearch нам достаточно bodyText и title,
+            // поэтому передаем пустой список для keywords.
+            List<String> keywords = java.util.Collections.emptyList();
             
             // В Elasticsearch ID хранится как String
             return new PageDocument(String.valueOf(id), url, title, bodyText, keywords);
