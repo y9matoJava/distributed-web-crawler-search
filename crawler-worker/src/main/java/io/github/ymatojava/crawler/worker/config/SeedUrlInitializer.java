@@ -1,7 +1,8 @@
 package io.github.ymatojava.crawler.worker.config;
 
+import io.github.ymatojava.crawler.common.model.UrlStatus;
+import io.github.ymatojava.crawler.common.url.UrlHash;
 import io.github.ymatojava.crawler.worker.entity.UrlEntity;
-import io.github.ymatojava.crawler.worker.entity.UrlStatus;
 import io.github.ymatojava.crawler.worker.mq.UrlMessage;
 import io.github.ymatojava.crawler.worker.mq.UrlProducer;
 import io.github.ymatojava.crawler.worker.repository.UrlRepository;
@@ -36,16 +37,13 @@ public class SeedUrlInitializer implements ApplicationRunner {
             log.info("База данных URL пуста. Добавляем Seed URL для старта краулера...");
             
             String seedUrl = "https://ru.wikipedia.org/wiki/Java";
+            String urlHash = UrlHash.sha256(seedUrl);
             
-            UrlEntity entity = new UrlEntity();
-            entity.setUrl(seedUrl);
-            entity.setDepth(0);
-            entity.setStatus(UrlStatus.DISCOVERED);
-            
+            UrlEntity entity = UrlEntity.discovered(seedUrl, urlHash);
             entity = urlRepository.save(entity);
             
             UrlMessage message = new UrlMessage(entity.getId(), seedUrl, 0);
-            urlProducer.sendUrlToQueue(message);
+            urlProducer.sendToReadyQueue(message);
             
             log.info("Seed URL успешно добавлен в базу и отправлен в очередь!");
         } else {
