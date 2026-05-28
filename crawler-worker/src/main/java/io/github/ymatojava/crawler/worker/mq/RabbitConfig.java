@@ -70,15 +70,15 @@ public class RabbitConfig {
      * Связываем основную очередь с обменником.
      */
     @Bean
-    public Binding urlReadyBinding(Queue urlReadyQueue, DirectExchange crawlerExchange) {
-        return BindingBuilder.bind(urlReadyQueue).to(crawlerExchange).with(URL_READY_ROUTING_KEY);
+    public Binding urlReadyBinding() {
+        return BindingBuilder.bind(urlReadyQueue()).to(crawlerExchange()).with(URL_READY_ROUTING_KEY);
     }
 
     /**
      * Связываем DLQ с обменником.
      */
     @Bean
-    public Binding deadLetterBinding(Queue deadLetterQueue, DirectExchange crawlerExchange) {
-        return BindingBuilder.bind(deadLetterQueue).to(crawlerExchange).with(DLQ_ROUTING_KEY);
+    public Binding deadLetterBinding() {
+        return BindingBuilder.bind(deadLetterQueue()).to(crawlerExchange()).with(DLQ_ROUTING_KEY);
     }
 }
