@@ -45,6 +45,9 @@ public class PageDocument {
     @Field(type = FieldType.Keyword)
     private List<String> keywords;
 
+    @org.springframework.data.annotation.Transient
+    private String snippet;
+
     public PageDocument() {
     }
 
@@ -74,5 +77,13 @@ public class PageDocument {
 
     public List<String> getKeywords() {
         return keywords;
+    }
+
+    public String getSnippet() {
+        return snippet;
+    }
+
+    public void setSnippet(String snippet) {
+        this.snippet = snippet;
     }
 }

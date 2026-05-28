@@ -9,6 +9,11 @@ import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Service;
 
+import org.springframework.data.elasticsearch.core.query.HighlightQuery;
+import org.springframework.data.elasticsearch.core.query.highlight.Highlight;
+import org.springframework.data.elasticsearch.core.query.highlight.HighlightField;
+import org.springframework.data.elasticsearch.core.query.highlight.HighlightParameters;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -39,6 +44,19 @@ public class SearchService {
             return List.of();
         }
 
+        HighlightQuery highlightQuery = new HighlightQuery(
+                new Highlight(
+                        HighlightParameters.builder()
+                                .withPreTags("<b>")
+                                .withPostTags("</b>")
+                                .withNumberOfFragments(2)
+                                .withFragmentSize(150)
+                                .build(),
+                        List.of(new HighlightField("bodyText"))
+                ),
+                PageDocument.class
+        );
+
         // Строим запрос: ищем фразу в полях title и bodyText,
         // причем совпадение в title весит в 2 раза больше (буст).
         NativeQuery nativeQuery = NativeQuery.builder()
@@ -48,13 +66,21 @@ public class SearchService {
                                 .query(query)
                         )
                 )
+                .withHighlightQuery(highlightQuery)
                 .withPageable(PageRequest.of(0, limit))
                 .build();
 
         SearchHits<PageDocument> searchHits = elasticsearchTemplate.search(nativeQuery, PageDocument.class);
 
         return searchHits.getSearchHits().stream()
-                .map(SearchHit::getContent)
+                .map(hit -> {
+                    PageDocument doc = hit.getContent();
+                    List<String> highlightField = hit.getHighlightField("bodyText");
+                    if (!highlightField.isEmpty()) {
+                        doc.setSnippet(String.join(" ... ", highlightField));
+                    }
+                    return doc;
+                })
                 .collect(Collectors.toList());
     }
 
