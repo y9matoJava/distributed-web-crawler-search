@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: crawler-worker
+
+  # Настройки подключения к PostgreSQL (запускается через docker-compose)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/crawler
+    username: crawler_user
+    password: crawler_password
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  # Настройки Hibernate
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      # Запрещаем Hibernate автоматически изменять схему (используем Flyway)
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 50
+
+  # Настройки Flyway (автоматическое применение миграций при старте)
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+logging:
+  level:
+    root: INFO
+    io.github.ymatojava: DEBUG

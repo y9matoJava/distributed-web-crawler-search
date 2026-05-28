@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Шаг 9: PostgreSQL Database
+  # Хранит все URL, их статусы и извлеченные данные страниц
+  postgres:
+    image: postgres:15-alpine
+    container_name: crawler-postgres
+    environment:
+      POSTGRES_DB: crawler
+      POSTGRES_USER: crawler_user
+      POSTGRES_PASSWORD: crawler_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crawler_user -d crawler"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Шаг 10: RabbitMQ Message Broker
+  # Распределенная очередь (URL Frontier) для связи компонентов краулера
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: crawler-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"   # Порт для AMQP протокола
+      - "15672:15672" # Порт для Web UI интерфейса (логин guest/guest)
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
