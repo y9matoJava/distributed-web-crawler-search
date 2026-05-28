@@ -1,0 +1,18 @@
+server:
+  port: 8080 # API будет доступно на порту 8080
+
+spring:
+  application:
+    name: search-api
+  
+  # Настройки подключения к Elasticsearch
+  elasticsearch:
+    uris: http://localhost:9200
+    connection-timeout: 3s
+    socket-timeout: 10s
+
+logging:
+  level:
+    root: INFO
+    io.github.ymatojava: DEBUG
+    org.springframework.data.elasticsearch.client.WIRE: TRACE # Для отладки запросов к ES

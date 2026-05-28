@@ -41,6 +41,27 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Шаг 13: Elasticsearch
+  # Хранит инвертированный индекс для быстрого полнотекстового поиска
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: crawler-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # Выключено для упрощения локальной разработки
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   rabbitmq_data:
+  elasticsearch_data:
