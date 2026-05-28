@@ -36,7 +36,7 @@ public class PostgresToElasticSyncService {
 
     @Scheduled(fixedDelay = 5000)
     public void syncData() {
-        String sql = "SELECT id, url, title, body_text, keywords FROM crawled_pages WHERE id > ? ORDER BY id ASC LIMIT 500";
+        String sql = "SELECT id, url, title, body_text, keywords FROM crawl_pages WHERE id > ? ORDER BY id ASC LIMIT 500";
         
         List<PageDocument> newPages = jdbcTemplate.query(sql, (rs, rowNum) -> {
             long id = rs.getLong("id");
