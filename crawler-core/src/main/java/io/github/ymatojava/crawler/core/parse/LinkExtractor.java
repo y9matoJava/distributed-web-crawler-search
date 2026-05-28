@@ -69,6 +69,11 @@ public class LinkExtractor {
                     rawUrl = link.attr("href");
                 }
 
+                String originalHref = link.attr("href");
+                if (originalHref.startsWith("#")) {
+                    continue; // Игнорируем ссылки, которые являются только якорями на текущей странице
+                }
+
                 // Шаг 1: Нормализация
                 Optional<NormalizedUrl> normalizedOpt = canonicalizer.canonicalize(rawUrl, baseUrl);
                 

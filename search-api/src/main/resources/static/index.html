@@ -3,24 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed Search Engine</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <title>Nexus Search</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0f172a;
-            --text-color: #f8fafc;
-            --accent-color: #3b82f6;
-            --accent-hover: #60a5fa;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --border-color: rgba(255, 255, 255, 0.1);
+            /* Mac Terminal / Code Editor Palette */
+            --bg-color: #0d1117;
+            --container-bg: #161b22;
+            --border-color: #30363d;
+            --text-main: #c9d1d9;
+            --text-muted: #8b949e;
+            
+            /* Accents */
+            --link-blue: #58a6ff;
+            --url-green: #3fb950;
+            --btn-grad-1: #a78bfa;
+            --btn-grad-2: #8b5cf6;
+            --btn-hover-1: #8b5cf6;
+            --btn-hover-2: #7c3aed;
         }
 
         body {
             margin: 0;
             padding: 0;
             font-family: 'Inter', sans-serif;
-            background: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 100%);
-            color: var(--text-color);
+            background-color: var(--bg-color);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
@@ -29,7 +37,7 @@
 
         .container {
             width: 100%;
-            max-width: 800px;
+            max-width: 850px;
             padding: 2rem;
             box-sizing: border-box;
             display: flex;
@@ -39,7 +47,7 @@
         }
 
         .header {
-            margin-top: 20vh;
+            margin-top: 25vh;
             text-align: center;
             transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -53,72 +61,110 @@
         h1 {
             font-size: 3.5rem;
             font-weight: 800;
-            margin: 0 0 1.5rem 0;
-            background: linear-gradient(135deg, #60a5fa, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            margin: 0 0 0.5rem 0;
+            color: #ffffff;
             letter-spacing: -1px;
         }
 
-        .search-box {
-            width: 100%;
-            position: relative;
-            display: flex;
-            gap: 1rem;
-            background: var(--card-bg);
-            padding: 0.5rem;
-            border-radius: 99px;
-            border: 1px solid var(--border-color);
-            backdrop-filter: blur(12px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
         }
 
-        .search-box:focus-within {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(59, 130, 246, 0.2);
-            border-color: rgba(59, 130, 246, 0.5);
+        /* Mac-Style Search Box */
+        .search-box-wrapper {
+            width: 100%;
+            background: var(--container-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .search-box-wrapper:focus-within {
+            border-color: var(--link-blue);
+        }
+
+        /* Mac Buttons Header */
+        .mac-header {
+            height: 30px;
+            background: #161b22;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            gap: 8px;
+        }
+
+        .mac-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .mac-dot.red { background-color: #ff5f56; }
+        .mac-dot.yellow { background-color: #ffbd2e; }
+        .mac-dot.green { background-color: #27c93f; }
+        
+        .mac-title {
+            flex: 1;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+            padding-right: 48px; /* to offset the dots for center alignment */
+        }
+
+        .search-form {
+            display: flex;
+            padding: 0.75rem 1rem;
+            gap: 1rem;
         }
 
         input[type="text"] {
             flex: 1;
             background: transparent;
             border: none;
-            color: white;
-            font-size: 1.2rem;
-            padding: 0.5rem 1.5rem;
+            color: var(--text-main);
+            font-size: 1.1rem;
+            font-family: 'JetBrains Mono', monospace;
             outline: none;
-            font-family: 'Inter', sans-serif;
         }
 
         input::placeholder {
-            color: rgba(255, 255, 255, 0.4);
+            color: #484f58;
         }
 
         button {
-            background: var(--accent-color);
+            background: linear-gradient(135deg, var(--btn-grad-1), var(--btn-grad-2));
             color: white;
             border: none;
-            padding: 0.8rem 2rem;
-            border-radius: 99px;
+            padding: 0.6rem 1.5rem;
+            border-radius: 6px;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
         }
 
         button:hover {
-            background: var(--accent-hover);
-            transform: scale(1.05);
+            background: linear-gradient(135deg, var(--btn-hover-1), var(--btn-hover-2));
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+            transform: translateY(-1px);
         }
 
         button:active {
-            transform: scale(0.95);
+            transform: translateY(1px);
+            box-shadow: none;
         }
 
         .results {
             width: 100%;
-            margin-top: 3rem;
+            margin-top: 2rem;
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
@@ -132,61 +178,60 @@
             transform: translateY(0);
         }
 
+        /* Result Cards */
         .result-card {
-            background: var(--card-bg);
+            background: var(--container-bg);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1.5rem;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-            animation: fadeIn 0.5s ease forwards;
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+            transition: all 0.2s ease;
+            animation: fadeIn 0.4s ease forwards;
             opacity: 0;
             transform: translateY(10px);
         }
 
         .result-card:hover {
-            transform: translateY(-4px) scale(1.01);
-            border-color: rgba(96, 165, 250, 0.4);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border-color: #484f58;
+            background: #1c2128;
         }
 
         .result-title {
-            color: #60a5fa;
-            font-size: 1.25rem;
+            color: var(--link-blue);
+            font-size: 1.2rem;
             font-weight: 600;
             text-decoration: none;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.3rem;
             display: inline-block;
-            transition: color 0.2s;
         }
 
         .result-title:hover {
-            color: #93c5fd;
             text-decoration: underline;
         }
 
         .result-url {
-            color: #34d399;
-            font-size: 0.875rem;
-            margin-bottom: 0.75rem;
+            color: var(--url-green);
+            font-size: 0.85rem;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 0.8rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .result-snippet {
-            color: #94a3b8;
-            font-size: 1rem;
-            line-height: 1.5;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            font-family: 'Inter', sans-serif;
         }
 
         .loader {
             display: none;
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255,255,255,0.1);
+            width: 30px;
+            height: 30px;
+            border: 3px solid var(--border-color);
             border-radius: 50%;
-            border-top-color: var(--accent-color);
+            border-top-color: var(--btn-grad-1);
             animation: spin 1s ease-in-out infinite;
             margin: 2rem auto;
         }
@@ -204,9 +249,10 @@
 
         .no-results {
             text-align: center;
-            color: #94a3b8;
-            font-size: 1.2rem;
+            color: var(--text-muted);
+            font-size: 1.1rem;
             margin-top: 2rem;
+            font-family: 'JetBrains Mono', monospace;
         }
 
     </style>
@@ -216,12 +262,21 @@
     <div class="container">
         <div class="header">
             <h1>Nexus Search</h1>
+            <div class="subtitle">Распределенный поисковик для гиков</div>
         </div>
         
-        <form class="search-box" id="searchForm">
-            <input type="text" id="searchInput" placeholder="Введите поисковой запрос..." autocomplete="off" autofocus>
-            <button type="submit">Поиск</button>
-        </form>
+        <div class="search-box-wrapper">
+            <div class="mac-header">
+                <div class="mac-dot red"></div>
+                <div class="mac-dot yellow"></div>
+                <div class="mac-dot green"></div>
+                <div class="mac-title">bash - nexus-search</div>
+            </div>
+            <form class="search-form" id="searchForm">
+                <input type="text" id="searchInput" placeholder="Введите поисковой запрос..." autocomplete="off" autofocus>
+                <button type="submit">Поиск</button>
+            </form>
+        </div>
 
         <div class="loader" id="loader"></div>
         <div class="results" id="resultsContainer"></div>
@@ -249,14 +304,14 @@
                 loader.style.display = 'none';
 
                 if (results.length === 0) {
-                    resultsContainer.innerHTML = '<div class="no-results">По вашему запросу ничего не найдено :(</div>';
+                    resultsContainer.innerHTML = '<div class="no-results">> По вашему запросу ничего не найдено :(</div>';
                     return;
                 }
 
                 results.forEach((result, index) => {
                     const card = document.createElement('div');
                     card.className = 'result-card';
-                    card.style.animationDelay = `${index * 0.1}s`;
+                    card.style.animationDelay = `${index * 0.05}s`;
                     
                     const title = result.title || result.url;
                     
@@ -270,7 +325,7 @@
 
             } catch (error) {
                 loader.style.display = 'none';
-                resultsContainer.innerHTML = '<div class="no-results" style="color: #ef4444;">Ошибка при выполнении поиска. Проверьте запущен ли бэкенд.</div>';
+                resultsContainer.innerHTML = '<div class="no-results" style="color: #ff5f56;">> Ошибка выполнения. Проверьте соединение с сервером.</div>';
                 console.error('Search error:', error);
             }
         });

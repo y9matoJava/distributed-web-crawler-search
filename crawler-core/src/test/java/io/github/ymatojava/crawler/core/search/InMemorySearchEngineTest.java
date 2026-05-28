@@ -70,10 +70,10 @@ class InMemorySearchEngineTest {
 
     @Test
     void shouldCreateSnippet() {
-        String longText = "a".repeat(300);
+        String longText = "testword ".repeat(50); // length is 9 * 50 = 450
         engine.indexPage("https://example.com", "Long text", longText);
         
-        List<SearchResult> results = engine.search("a", 10);
+        List<SearchResult> results = engine.search("testword", 10);
         
         assertEquals(1, results.size());
         String snippet = results.get(0).snippet();
