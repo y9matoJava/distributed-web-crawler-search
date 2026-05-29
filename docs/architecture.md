@@ -1,67 +1,104 @@
-# Architecture
+# 🏗️ Архитектура системы
 
-## Project Goal
+## Обзор
 
-`distributed-web-crawler-search` is a learning backend project that implements a web crawler and a mini search engine.
+Distributed Web Crawler Search — распределённая поисковая система, построенная по принципам Clean Architecture.
 
-The crawler starts from one or more seed URLs, downloads HTML pages, extracts links, recursively discovers new pages, avoids duplicate and cyclic crawling, extracts text and keywords, stores crawl state, and provides fast search over indexed pages.
+---
 
-The project is designed as a backend/system-design learning project, not as an aggressive internet scraper.
+## Модульная структура
 
-## Main Features
+```
+                    ┌────────────────────┐
+                    │    common           │
+                    │  (модели и DTO)     │
+                    └──────┬─────────────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+    ┌─────────▼──────┐   ┌─▼────────────▼───────┐
+    │  crawler-core   │   │     search-api        │
+    │  (чистая Java)  │   │  (Spring Boot 8081)   │
+    └─────────┬───────┘   └───────────────────────┘
+              │
+    ┌─────────▼───────┐
+    │ crawler-worker   │
+    │  (Spring Boot)   │
+    └──────────────────┘
+```
 
-Final version should support:
+### common
+Общие модели данных, используемые всеми модулями:
+- `CrawlPage` — неизменяемый DTO страницы (url, title, bodyText, outLinks)
+- `CrawlUrl` — DTO ссылки (url, depth, status)
+- `UrlStatus` — enum состояний URL (DISCOVERED → CRAWLED / FAILED / SKIPPED)
+- `UrlHash` — SHA-256 хеширование URL для дедупликации
 
-- recursive web crawling from seed URLs;
-- HTML page fetching;
-- HTML parsing;
-- link extraction;
-- URL normalization;
-- URL deduplication;
-- cycle protection;
-- content deduplication;
-- keyword extraction;
-- persistent crawl state in PostgreSQL;
-- distributed URL queue with RabbitMQ;
-- per-host rate limiting with Redis;
-- robots.txt support;
-- full-text search with Elasticsearch;
-- Search API;
-- multiple crawler workers;
-- retry and dead-letter queue;
-- Docker Compose local environment;
-- unit and integration tests.
+### crawler-core
+Чистая бизнес-логика краулера **без зависимостей от Spring**:
+- **Скачивание:** `HttpPageDownloader` — HTTP-клиент с таймаутами и лимитами
+- **Парсинг:** `PageParser` — извлечение заголовка, текста и ссылок через Jsoup
+- **URL-обработка:** `UrlCanonicalizer` + `UrlFilter` — нормализация и фильтрация
+- **Ключевые слова:** `KeywordExtractor` — топ-20 слов по частотности
+- **In-memory движок:** `CrawlEngine` + `InvertedIndex` — BFS-краулер для тестов
 
-## High-Level Architecture
+### crawler-worker
+Распределённый паук на Spring Boot:
+- **RabbitMQ consumer/producer** — получение и публикация URL-задач
+- **WorkerPipeline** — конвейер: robots.txt → politeness → download → parse → save → enqueue
+- **JPA-сущности** — `UrlEntity`, `PageEntity` (PostgreSQL + Flyway)
+- **PolitenessLimiter** — per-domain rate limiting через Redis (2 сек)
+- **RobotsTxtService** — проверка и кэширование robots.txt (24ч TTL)
 
-```text
-Seed URLs
-   |
-   v
-URL Discovery / Deduplication
-   |
-   v
-PostgreSQL crawl_url table
-   |
-   v
-RabbitMQ URL Queue
-   |
-   v
-Crawler Worker
-   |
-   +--> Robots.txt Checker
-   +--> Redis Host Rate Limiter
-   +--> HTML Fetcher
-   +--> HTML Parser
-   +--> Link Extractor
-   +--> Text Extractor
-   +--> Keyword Extractor
-   +--> Content Deduplicator
-   +--> Document Indexer
-   |
-   +--> New discovered URLs -> PostgreSQL -> RabbitMQ
+### search-api
+Поисковый сервис на Spring Boot:
+- **SearchService** — полнотекстовый поиск через Elasticsearch (multi_match + highlights)
+- **PostgresToElasticSyncService** — синхронизация PG → ES каждые 5 секунд
+- **REST API** — `GET /api/v1/search?q={query}`
+- **Веб-интерфейс** — стильная страница в стиле macOS-терминала
 
-Elasticsearch Document Index
-   |
-   v
-Search API
+---
+
+## Инфраструктура
+
+| Сервис | Назначение |
+|--------|------------|
+| **PostgreSQL 15** | Хранение URL, страниц и ключевых слов (master data) |
+| **RabbitMQ 3.12** | Очередь URL-задач + Dead Letter Queue для ошибок |
+| **Elasticsearch 8.11** | Полнотекстовый поисковый индекс |
+| **Redis 7.2** | Rate limiting (per-domain), кэш robots.txt |
+
+---
+
+## Ключевые паттерны
+
+| Паттерн | Применение |
+|---------|------------|
+| Clean Architecture | crawler-core без Spring, интеграция через CoreBeansConfig |
+| Sealed Interfaces | DownloadResult (Success / Failure) |
+| Records | Неизменяемые DTO: CrawlPage, CrawlUrl, ParsedPage, UrlMessage |
+| Event-Driven | RabbitMQ producer/consumer для обработки URL |
+| Dead Letter Queue | Автоматическая маршрутизация неудачных сообщений |
+| Flyway Migrations | Версионирование схемы БД через SQL-миграции |
+| Scheduled Sync | PostgreSQL → Elasticsearch каждые 5 секунд |
+
+---
+
+## Поток данных
+
+```mermaid
+graph LR
+    A[🌱 Seed URL] --> B[🐘 PostgreSQL]
+    A --> C[🐰 RabbitMQ]
+    C --> D[🕷️ WorkerPipeline]
+    D --> E{robots.txt OK?}
+    E -->|Да| F[Скачать HTML]
+    E -->|Нет| G[SKIPPED]
+    F --> H[Парсинг + ключевые слова]
+    H --> B
+    H --> I[Новые ссылки → RabbitMQ]
+    I --> C
+    B --> J[⏱️ Sync каждые 5 сек]
+    J --> K[🔍 Elasticsearch]
+    K --> L[👤 Поисковый запрос]
+```
